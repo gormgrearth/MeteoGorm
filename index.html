@@ -563,7 +563,7 @@ function getMomentClass(h){
   return'is-night';
 }
 
-function renderDetailChart(hours){
+function renderDetailChart(hours,sunriseISO,sunsetISO,isToday){
   const svg=document.getElementById('detail-chart');
   const W=svg.parentElement.clientWidth||800;
   /* Extra bottom padding to fit hour label + icon row + hum row */
@@ -591,6 +591,80 @@ function renderDetailChart(hours){
     f.innerHTML=`<div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;display:flex;align-items:center;justify-content:center">${html}</div>`;
     if(parent)parent.appendChild(f);
     return f;
+  }
+
+  /* ── Day/Night background ── */
+  /* hours spans 0h–22h (step 2), so total = 24h, x=0 → 0h00, x=CW → 24h00 */
+  const totalMinutes = 24 * 60;
+  function minutesToX(minutes){ return PL + (minutes / totalMinutes) * CW; }
+
+  const defs2=el('defs',{},svg);
+  /* Gradient: night → day transition at sunrise */
+  const gSunrise=el('linearGradient',{id:'gSunrise',x1:'0',y1:'0',x2:'1',y2:'0'},defs2);
+  el('stop',{'offset':'0%','stop-color':'#0a1a3a','stop-opacity':'1'},gSunrise);
+  el('stop',{'offset':'100%','stop-color':'#1a4a8a','stop-opacity':'1'},gSunrise);
+  /* Gradient: day → night transition at sunset */
+  const gSunset=el('linearGradient',{id:'gSunset',x1:'0',y1:'0',x2:'1',y2:'0'},defs2);
+  el('stop',{'offset':'0%','stop-color':'#1a4a8a','stop-opacity':'1'},gSunset);
+  el('stop',{'offset':'100%','stop-color':'#0a1a3a','stop-opacity':'1'},gSunset);
+
+  if(sunriseISO && sunsetISO){
+    const sr=new Date(sunriseISO), ss=new Date(sunsetISO);
+    const srMin=sr.getHours()*60+sr.getMinutes();
+    const ssMin=ss.getHours()*60+ss.getMinutes();
+    const xSr=minutesToX(srMin), xSs=minutesToX(ssMin);
+    const transW=40; // transition width in px for sunrise/sunset blending
+    const bgH=PT+CH+PB; // full chart area height
+
+    /* Night before sunrise */
+    el('rect',{x:PL,y:PT-4,width:Math.max(0,xSr-PL-transW/2),height:bgH+4,fill:'#0a1a3a',rx:'4'},svg);
+    /* Sunrise transition */
+    const srGrad=el('linearGradient',{id:'gSrTrans',x1:'0',y1:'0',x2:'1',y2:'0'},defs2);
+    el('stop',{'offset':'0%','stop-color':'#0a1a3a','stop-opacity':'1'},srGrad);
+    el('stop',{'offset':'100%','stop-color':'#0d3060','stop-opacity':'1'},srGrad);
+    el('rect',{x:xSr-transW/2,y:PT-4,width:transW,height:bgH+4,fill:'url(#gSrTrans)'},svg);
+    /* Daytime */
+    el('rect',{x:xSr+transW/2,y:PT-4,width:Math.max(0,xSs-xSr-transW),height:bgH+4,fill:'#0d3060'},svg);
+    /* Sunset transition */
+    const ssGrad=el('linearGradient',{id:'gSsTrans',x1:'0',y1:'0',x2:'1',y2:'0'},defs2);
+    el('stop',{'offset':'0%','stop-color':'#0d3060','stop-opacity':'1'},ssGrad);
+    el('stop',{'offset':'100%','stop-color':'#0a1a3a','stop-opacity':'1'},ssGrad);
+    el('rect',{x:xSs-transW/2,y:PT-4,width:transW,height:bgH+4,fill:'url(#gSsTrans)'},svg);
+    /* Night after sunset */
+    el('rect',{x:xSs+transW/2,y:PT-4,width:Math.max(0,PL+CW-(xSs+transW/2)),height:bgH+4,fill:'#0a1a3a',rx:'4'},svg);
+
+    /* Sunrise/sunset marker labels */
+    const srLabel=fmtTime(sunriseISO), ssLabel=fmtTime(sunsetISO);
+    /* Sunrise icon + time */
+    const srIconY=PT+CH+PB-8;
+    el('line',{x1:xSr,y1:PT-4,x2:xSr,y2:PT+CH+PB,stroke:'rgba(249,217,122,0.3)','stroke-width':'1','stroke-dasharray':'3,3'},svg);
+    const srTxt=el('text',{x:xSr+3,y:PT+6,fill:'rgba(249,217,122,0.6)','font-size':'8','font-family':'DM Sans,sans-serif','font-weight':'500'},svg);
+    srTxt.textContent='↑'+srLabel;
+    /* Sunset icon + time */
+    el('line',{x1:xSs,y1:PT-4,x2:xSs,y2:PT+CH+PB,stroke:'rgba(249,217,122,0.3)','stroke-width':'1','stroke-dasharray':'3,3'},svg);
+    const ssTxt=el('text',{x:xSs-3,y:PT+6,fill:'rgba(249,217,122,0.6)','font-size':'8','font-family':'DM Sans,sans-serif','font-weight':'500','text-anchor':'end'},svg);
+    ssTxt.textContent='↓'+ssLabel;
+  }
+
+  /* ── Current time line (today only) ── */
+  if(isToday){
+    const now=new Date();
+    const nowMin=now.getHours()*60+now.getMinutes();
+    const xNow=minutesToX(nowMin);
+    if(xNow>=PL && xNow<=PL+CW){
+      const nowDefs=el('defs',{},svg);
+      const gNow=el('linearGradient',{id:'gNowLine',x1:'0',y1:'0',x2:'0',y2:'1'},nowDefs);
+      el('stop',{'offset':'0%','stop-color':'#ffffff','stop-opacity':'0.9'},gNow);
+      el('stop',{'offset':'100%','stop-color':'#ffffff','stop-opacity':'0.1'},gNow);
+      el('line',{x1:xNow,y1:PT-4,x2:xNow,y2:PT+CH+10,stroke:'url(#gNowLine)','stroke-width':'1.5'},svg);
+      /* Glowing dot at top */
+      el('circle',{cx:xNow,cy:PT-2,r:'3.5',fill:'white','filter':'drop-shadow(0 0 4px rgba(255,255,255,0.8))'},svg);
+      /* "Maintenant" label */
+      const labelX=xNow+CW*0.5>PL+CW ? xNow-4 : xNow+4;
+      const anchor=xNow+CW*0.5>PL+CW ? 'end' : 'start';
+      const nowTxt=el('text',{x:labelX,y:PT-8,fill:'white','font-size':'8','font-family':'DM Sans,sans-serif','font-weight':'500','text-anchor':anchor},svg);
+      nowTxt.textContent='Maintenant';
+    }
   }
 
   const temps=hours.map(x=>x.temp);
@@ -705,7 +779,9 @@ function openDetail(dayIndex){
   }
 
   /* Mini chart */
-  requestAnimationFrame(()=>renderDetailChart(hourSlots));
+  const sunriseStr=daily.sunrise[dayIndex];
+  const sunsetStr=daily.sunset[dayIndex];
+  requestAnimationFrame(()=>renderDetailChart(hourSlots,sunriseStr,sunsetStr,isToday));
 
   const panel=document.getElementById('detail-panel');
   panel.classList.add('visible');
