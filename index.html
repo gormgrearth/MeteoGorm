@@ -599,9 +599,10 @@ function renderDetailChart(hours,sunriseISO,sunsetISO,isToday){
   }
 
   /* ── Day/Night background ── */
-  /* hours spans 0h–22h (step 2), so total = 24h, x=0 → 0h00, x=CW → 24h00 */
-  const totalMinutes = 24 * 60;
-  function minutesToX(minutes){ return PL + (minutes / totalMinutes) * CW; }
+  /* hours[0].h=0, hours[n-1].h=22 → tx(0)=PL, tx(n-1)=PL+CW
+     minutesToX must use the same scale: 0 min → PL, 22*60 min → PL+CW        */
+  const chartSpanMinutes = (hours[hours.length-1]?.h ?? 22) * 60; // 22*60=1320
+  function minutesToX(minutes){ return PL + (minutes / chartSpanMinutes) * CW; }
 
   const defs2=el('defs',{},svg);
   /* Gradient: night → day transition at sunrise */
